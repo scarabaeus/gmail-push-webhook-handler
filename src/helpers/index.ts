@@ -2,15 +2,13 @@ import {
   S3Client,
   GetObjectCommand,
   GetObjectCommandInput,
-  PutObjectCommand,
-  PutObjectCommandInput,
 } from "@aws-sdk/client-s3";
 import axios from "axios";
 
 const s3Client = new S3Client({ region: process.env.AWS_REGION });
-const FILE_NAME = process.env.FILE_NAME || "dwolla/tx.json";
+const FILE_NAME = process.env.FILE_NAME || "gmail/tx.json";
 const TOKEN_MAP_FILE =
-  process.env.TOKEN_MAP_FILE || "dwolla/dwolla-token-map.json";
+  process.env.TOKEN_MAP_FILE || "gmail/gmail-push-token-map.json";
 const BUCKET = process.env.BUCKET || "webhooks-transactions";
 const AUTOMATION_ENDPOINT =
   process.env.AUTOMATION_ENDPOINT ||
@@ -81,26 +79,6 @@ const loadFile = async () => {
     console.log(`Error loading file`);
     return {};
   }
-};
-
-export const saveTransaction = async (
-  txId: string,
-  instanceId: string,
-  tenantId: string,
-  tenantEnvironment: string
-) => {
-  const data = await loadFile();
-  data[txId] = {
-    instanceId: instanceId,
-    tenantId: tenantId,
-    tenantEnvironment: tenantEnvironment,
-  };
-  const objectRequest: PutObjectCommandInput = {
-    Bucket: BUCKET,
-    Key: FILE_NAME,
-    Body: JSON.stringify(data),
-  };
-  return await s3Client.send(new PutObjectCommand(objectRequest));
 };
 
 const streamToString = (stream: any): Promise<any> => {

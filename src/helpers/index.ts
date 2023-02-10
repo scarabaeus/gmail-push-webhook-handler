@@ -1,62 +1,47 @@
-import {
-  S3Client,
-  GetObjectCommand,
-  GetObjectCommandInput,
-} from "@aws-sdk/client-s3";
-import axios from "axios";
+import axios from 'axios';
 
-const s3Client = new S3Client({ region: process.env.AWS_REGION });
-const FILE_NAME = process.env.FILE_NAME || "gmail/tx.json";
-const TOKEN_MAP_FILE =
-  process.env.TOKEN_MAP_FILE || "gmail/gmail-push-token-map.json";
-const BUCKET = process.env.BUCKET || "webhooks-transactions";
-const AUTOMATION_ENDPOINT =
-  process.env.AUTOMATION_ENDPOINT ||
-  "https://integration-core-dev-api.liberateinc.io/";
+const AUTOMATION_ENDPOINT = process.env.AUTOMATION_ENDPOINT || 'https://integration-core-dev-api.liberateinc.io/';
 
-export const findTransaction = async (txId: string): Promise<Transaction> => {
-  const data = await loadFile();
-  console.log(
-    `Loaded Tx File [looking for txId ${txId}]: ${JSON.stringify(
-      data,
-      null,
-      2
-    )}`
-  );
-  return data[txId];
-};
+interface PushMessage {
+  txId: string;
+  instanceId: string;
+  tenantId: string;
+  tenantEnvironment: string;
+}
 
-export const notifyAutomation = async (tx: Transaction, topic: string) => {
+interface InvokeOptions {
+  token: string;
+  tenantId: string;
+  tenantEnvironment: string;
+  slug: string;
+}
+
+export const notifyAutomation = async (body: PushMessage, options: InvokeOptions) => {
   return new Promise(async (resolve, reject) => {
     try {
-      const bearerToken: any = await findBearerToken(
-        tx.tenantId,
-        tx.tenantEnvironment
-      );
-      console.log(`Found bearer token ${JSON.stringify(bearerToken)}`);
       axios
-        .post(
+        .put(
           AUTOMATION_ENDPOINT,
           {
-            instanceId: `${tx.instanceId}`,
-            event: `${topic}`,
-            context: {},
+            slug: options.slug,
+            context: { ...body },
           },
           {
             headers: {
-              "Content-Type": "application/json",
-              "x-liberate-tenant-id": `${tx.tenantId}`,
-              "x-liberate-tenant-environment": `${tx.tenantEnvironment}`,
-              // Authorization: `Bearer ${bearerToken.token}`,
+              Authorization: options.token,
+              'Content-Type': 'application/json',
+              // 'x-liberate-tenant-id': `${options.tenantId}`,
+              // 'x-liberate-tenant-environment': `${options.tenantEnvironment}`,
+              Accept: 'application/json',
             },
-          }
+          },
         )
         .then((response) => {
-          console.log(`Success sending update to automation: ${tx.instanceId}`, response.data);
+          console.log(`Success invoking automation:`, response.data);
           resolve(response.data);
         })
         .catch((err: any) => {
-          console.error(`Error sending update to automation: ${tx.instanceId}`, err);
+          console.error(`Error invoking automation:`, err);
           reject(err);
         });
     } catch (err: any) {
@@ -64,61 +49,3 @@ export const notifyAutomation = async (tx: Transaction, topic: string) => {
     }
   });
 };
-
-const loadFile = async () => {
-  try {
-    const getObjectCommandInput: GetObjectCommandInput = {
-      Bucket: BUCKET,
-      Key: FILE_NAME,
-    };
-    const response = await s3Client.send(
-      new GetObjectCommand(getObjectCommandInput)
-    );
-    return JSON.parse(await streamToString(response.Body));
-  } catch (err) {
-    console.log(`Error loading file`);
-    return {};
-  }
-};
-
-const streamToString = (stream: any): Promise<any> => {
-  return new Promise((resolve, reject) => {
-    const chunks: any = [];
-    stream.on("data", (chunk: unknown) => chunks.push(chunk));
-    stream.on("error", reject);
-    stream.on("end", () => resolve(Buffer.concat(chunks).toString("utf-8")));
-  });
-};
-
-const loadTokenMap = async () => {
-  try {
-    const getObjectCommandInput: GetObjectCommandInput = {
-      Bucket: BUCKET,
-      Key: TOKEN_MAP_FILE,
-    };
-    const response = await s3Client.send(
-      new GetObjectCommand(getObjectCommandInput)
-    );
-    return JSON.parse(await streamToString(response.Body));
-  } catch (err) {
-    console.error(`Unable to load token map file`, err);
-    return {};
-  }
-};
-
-const findBearerToken = async (
-  tenantId: string,
-  tenantEnvironment: string
-): Promise<any> => {
-  const data = await loadTokenMap();
-  const key = `${tenantId}:${tenantEnvironment}`;
-  console.log(`Searching for bearer token by ${key}`);
-  return data[key];
-};
-
-export interface Transaction {
-  txId: string;
-  instanceId: string;
-  tenantId: string;
-  tenantEnvironment: string;
-}

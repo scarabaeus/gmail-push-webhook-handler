@@ -1,49 +1,40 @@
-import {
-  APIGatewayProxyHandlerV2,
-  APIGatewayProxyEventV2,
-  APIGatewayProxyResultV2,
-} from "aws-lambda";
-import { notifyAutomation, findTransaction } from "./helpers";
+import { APIGatewayProxyHandlerV2, APIGatewayProxyEventV2, APIGatewayProxyResultV2 } from 'aws-lambda';
+import { notifyAutomation } from './helpers';
 
-export const handler: APIGatewayProxyHandlerV2 = async (
-  event: APIGatewayProxyEventV2
-) => {
-  console.log(`EVENT: ${JSON.stringify(event, null, 2)}`);
-  // if (isDwolla(event)) {
-    if (event.body) {
-      const body = JSON.parse(event.body);
-      // const { id, resourceId, topic } = body;
-      console.log(`Gmail Transaction ${JSON.stringify(body, null, 2)}`);
-      // if (topic.startsWith("customer_")) {
-      //   console.log(`Gmail Transaction ${JSON.stringify(body, null, 2)}`);
-      //   console.log(`Waiting for 5sec....`);
-      //   await timeoutPromise(5000);
-      //   console.log(`Looking for transaction.... ${resourceId}`);
-      //   const tx = await findTransaction(resourceId);
-      //   if (!tx) {
-      //     console.error(`No Transaction Found... for resourceId ${resourceId}`);
-      //     return buildResponse(200);
-      //   } else {
-      //     console.log(`Found Transaction: ${JSON.stringify(tx, null, 2)}`);
-      //     try {
-      //       const response = await notifyAutomation(tx, topic);
-      //       console.log(`Got response from automation`, response);
-      //     } catch (err: any) {
-      //       console.error(`Error notifying Automation`, err);
-      //     }
-      //     return buildResponse(200);
-      //   }
-      // } else {
-      //   return buildResponse(200);
-      // }
-      return buildResponse(200);
-    } else {
-      console.error(`No body sent with gmail push webhook call`);
-      return buildResponse(200);
+export const handler: APIGatewayProxyHandlerV2 = async (event: APIGatewayProxyEventV2) => {
+  console.log(`Incoming Webhook Request -- EVENT: ${JSON.stringify(event, null, 2)}`);
+  if (event.body) {
+    const body = JSON.parse(event.body);
+    // In this case, we want event.body.message
+    console.log(`Gmail Transaction ${JSON.stringify(body, null, 2)}`);
+
+    try {
+      // We're not going to await this because if integration core takes too long to ACK the message, Google will keep
+      // sending us the same message over and over again. We'll just swallow for now.
+      notifyAutomation(body, {
+        token: 'Bearer ****', // COPY AND PASTE THE BEARER TOKEN HERE
+        tenantId: 'liberate',
+        tenantEnvironment: 'qa',
+        slug: 'gmail-inbox-item-to-slack-4d20f121-399c-4245-a029-231febf4e397',
+      });
+
+      await timeoutPromise(2000);
+    } catch (error) {
+      // We're just swallowing the error for now because I don't want Google to keep calling us with the back-off
     }
-  // } else {
-  //   return buildResponse(400);
-  // }
+
+    return buildResponse(200);
+  } else {
+    console.error(`No body sent with gmail push webhook call`);
+    return buildResponse(200);
+  }
+};
+
+const buildResponse = (statusCode: number): APIGatewayProxyResultV2 => {
+  return {
+    statusCode: statusCode,
+    body: JSON.stringify({}),
+  };
 };
 
 const timeoutPromise = (ms: number) => {
@@ -53,19 +44,4 @@ const timeoutPromise = (ms: number) => {
       resolve(1);
     }, ms);
   });
-};
-
-const isDwolla = (event: APIGatewayProxyEventV2) => {
-  const { requestContext: { http } = {} } = event;
-  return (
-    http?.path.includes("/dwolla") && http?.method.toLowerCase() === "post"
-  );
-};
-
-const buildResponse = (statusCode: number): APIGatewayProxyResultV2 => {
-  console.log(`Building response with status code ${statusCode}`);
-  return {
-    statusCode: statusCode,
-    "body": JSON.stringify({ "name": "steve g" }),
-  };
 };
